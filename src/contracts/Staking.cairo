@@ -1,3 +1,20 @@
+use starknet::ContractAddress;
+
+//  #[derive(Drop,storage_access::StorageAccess)]
+// struct StakeDetail {
+//     timeStaked: u64,
+//     amount: u256,
+//     status:bool,
+// }
+
+#[starknet::interface]
+trait StakingTokenTrait<ContractState> {
+    fn stakeToken(ref self:ContractState, amount:u256, token_address:ContractAddress);
+    fn withdrawToken(ref self:ContractState,amount:u256, token_address:ContractAddress);
+    fn getUserBalance(self:@ContractState) -> u256;
+    // fn getStakeDetailsByAddress(self: @ContractState, account:ContractAddress) -> StakeDetail;
+}
+
 #[starknet::contract]
 mod StakingToken {
 /////////////////////////////
@@ -8,6 +25,8 @@ use starknet::{get_caller_address, get_contract_address, get_block_timestamp};
 use new_syntax::interfaces::IERC20DispatcherTrait;
  use new_syntax::interfaces::IERC20Dispatcher;
  use integer::Into;
+ use core::serde::Serde;
+ use core::integer::u64;
 
 /////////////////////
 //STAKING DETAIL
@@ -60,9 +79,9 @@ struct TokenWithdraw{
     time: u64
 }
 
-// stakeToken
 
-#[external]
+#[external(v0)]
+ impl StakingTokenTraitImpl of super::StakingTokenTrait<ContractState>{
 fn stakeToken(ref self:ContractState, amount:u256, token_address:ContractAddress) {
 let caller:ContractAddress = get_caller_address();
 let address_this = get_contract_address();
@@ -74,7 +93,7 @@ let mut stake:StakeDetail = self.staker.read(caller);
 if stake_status == true{
     let day_spent = get_block_timestamp() - stake_time;
     if day_spent > minStakeTime{
-        let reward = calculateReward(self,caller);
+        let reward = self.calculateReward(caller);
         stake.amount += reward;
         stake.amount -= amount;
         stake.timeStaked += get_block_timestamp();
@@ -94,8 +113,6 @@ if stake_status == true{
 self.emit(Event::TokenStaked(TokenStaked{staker:caller, amount, time:stake_time}));
 }
 
-// withdrawToken
-#[external]
 fn withdrawToken(ref self:ContractState,amount:u256, token_address:ContractAddress){
 let caller = get_caller_address();
 let stake_amount = self.staker.read(caller).amount;
@@ -104,7 +121,7 @@ let day_spent = get_block_timestamp() - stake_time;
 let mut stake:StakeDetail = self.staker.read(caller);
 assert(amount <= stake_amount, 'Insufficient fund');
 if day_spent > minStakeTime {
-    let reward = calculateReward(self,caller);
+    let reward = self.calculateReward(caller);
     stake.amount += reward;
     stake.amount -= amount;
     stake.timeStaked = get_block_timestamp();
@@ -123,9 +140,22 @@ if stake.amount > 0 {
 self.emit(Event::TokenWithdraw(TokenWithdraw{staker:caller, amount, time:stake_time}));
 }
 
-// calculateReward
-#[internal]
+fn getUserBalance(self:@ContractState) -> u256{
+let caller:ContractAddress = get_caller_address();
+return self.staker.read(caller).amount;
+}
 
+// getStakeDetailsByAddress
+// fn getStakeDetailsByAddress(self: @ContractState, account:ContractAddress) ->super::StakeDetail{
+//     return self.staker.read(account);
+// }
+ } 
+
+
+
+
+ #[generate_trait]
+    impl calculateRewardTrait of calculateReward {
 fn calculateReward(self:ContractState,account:ContractAddress) -> u256{
   let caller = get_caller_address();
   let stake_status:bool = self.staker.read(caller).status;
@@ -140,19 +170,7 @@ fn calculateReward(self:ContractState,account:ContractAddress) -> u256{
   return reward;
 
 }
-
-#[view]
-// getUserBalance
-fn getUserBalance(self:@ContractState) -> u256{
-let caller:ContractAddress = get_caller_address();
-return self.staker.read(caller).amount;
-}
-
-#[view]
-// getStakeDetailsByAddress
-fn getStakeDetailsByAddress(self: @ContractState, account:ContractAddress) -> StakeDetail{
-    return self.staker.read(account);
-}
+    }
 
 
 }
